@@ -879,11 +879,11 @@ if [[ "$1" == "--start" ]]; then
     # Remove special characters ^M from proxies file
     sed -i 's/\r//g' $proxies_file
 
-    i=0;
+    i=0
     while IFS= read -r line || [ -n "$line" ]; do
       if [[ "$line" =~ ^[^#].* ]]; then
-        i=`expr $i + 1`
         start_containers "$i" "$line"
+        i=$((i + 1)) # Increment index for next proxy
       fi
     done < $proxies_file
   else
