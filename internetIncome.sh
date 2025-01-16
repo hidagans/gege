@@ -110,7 +110,7 @@ check_open_ports() {
 }
 
 add_proxyrack_device() {
-  local api_key="YOUR_API_KEY"  # Ganti YOUR_API_KEY dengan API Key yang benar
+  local api_key=$(grep -E '^PROXYRACK_API=' properties.conf | cut -d '=' -f2 | tr -d "'")
   local device_name=$(grep -E '^DEVICE_NAME=' properties.conf | cut -d '=' -f2 | tr -d "'")
 
   if [ -z "$device_name" ]; then
