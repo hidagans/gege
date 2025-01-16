@@ -110,32 +110,33 @@ check_open_ports() {
 }
 
 add_proxyrack_device() {
-  local api_key=$(grep -E '^PROXYRACK_API=' properties.conf | cut -d '=' -f2 | tr -d "'")
-  local device_id=$(cat proxyrack.txt)
+  local api_key="YOUR_API_KEY"  # Ganti YOUR_API_KEY dengan API Key yang benar
   local device_name=$(grep -E '^DEVICE_NAME=' properties.conf | cut -d '=' -f2 | tr -d "'")
-
-  if [ -z "$device_id" ]; then
-    echo -e "${RED}Device ID tidak ditemukan di proxyrack.txt${NOCOLOUR}"
-    exit 1
-  fi
 
   if [ -z "$device_name" ]; then
     echo -e "${RED}Device name tidak ditemukan di properties.conf${NOCOLOUR}"
     exit 1
   fi
 
-  response=$(curl -s -w "%{http_code}" -o /dev/null \
-    -X POST https://peer.proxyrack.com/api/device/add \
-    -H "Api-Key: $api_key" \
-    -H "Content-Type: application/json" \
-    -H "Accept: application/json" \
-    -d "{\"device_id\":\"$device_id\",\"device_name\":\"$device_name\"}")
+  # Baca setiap device_id dari proxyrack.txt dan tambahkan satu per satu
+  while IFS= read -r device_id; do
+    if [ -z "$device_id" ]; then
+      continue
+    fi
 
-  if [ "$response" -eq 200 ]; then
-    echo -e "${GREEN}Device berhasil ditambahkan ke ProxyRack${NOCOLOUR}"
-  else
-    echo -e "${RED}Gagal menambahkan device ke ProxyRack. Kode status: $response${NOCOLOUR}"
-  fi
+    response=$(curl -s -w "%{http_code}" -o /dev/null \
+      -X POST https://peer.proxyrack.com/api/device/add \
+      -H "Api-Key: $api_key" \
+      -H "Content-Type: application/json" \
+      -H "Accept: application/json" \
+      -d "{\"device_id\":\"$device_id\",\"device_name\":\"$device_name\"}")
+
+    if [ "$response" -eq 200 ]; then
+      echo -e "${GREEN}Device dengan ID $device_id berhasil ditambahkan ke ProxyRack${NOCOLOUR}"
+    else
+      echo -e "${RED}Gagal menambahkan device dengan ID $device_id ke ProxyRack. Kode status: $response${NOCOLOUR}"
+    fi
+  done < proxyrack.txt
 }
 
 # Start all containers
