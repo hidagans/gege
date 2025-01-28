@@ -8,7 +8,7 @@ NC='\033[0m'
 
 # Kredensial
 USERNAME="yearigans"
-PASSWORD="mantulx10@"
+PASSWORD="mantulx10"
 
 # Update sistem
 echo -e "${YELLOW}Updating system...${NC}"
