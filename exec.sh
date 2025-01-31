@@ -10,23 +10,38 @@ NC='\033[0m'
 USERNAME="yearigans"
 PASSWORD="mantulx10"
 
-# Update sistem
-echo -e "${YELLOW}Updating system...${NC}"
-apt-get update && apt-get upgrade -y
+# Fungsi untuk memeriksa apakah Squid sudah terinstall
+check_squid_installed() {
+    if dpkg -l | grep -q squid; then
+        echo -e "${GREEN}Squid Proxy sudah terinstall. Melanjutkan tanpa instalasi.${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}Squid Proxy belum terinstall. Melanjutkan dengan instalasi.${NC}"
+        return 1
+    fi
+}
 
-# Install Squid dan Apache Utils
-echo -e "${YELLOW}Installing Squid Proxy and required utilities...${NC}"
-apt-get install squid apache2-utils -y
+# Jika Squid sudah terinstall, skip proses instalasi dan konfigurasi
+if check_squid_installed; then
+    echo -e "${GREEN}Melanjutkan tanpa instalasi dan konfigurasi Squid.${NC}"
+else
+    # Update sistem
+    echo -e "${YELLOW}Updating system...${NC}"
+    apt-get update && apt-get upgrade -y
 
-# Buat user dan password
-echo -e "${YELLOW}Creating user credentials...${NC}"
-htpasswd -bc /etc/squid/passwd $USERNAME $PASSWORD
+    # Install Squid dan Apache Utils
+    echo -e "${YELLOW}Installing Squid Proxy and required utilities...${NC}"
+    apt-get install squid apache2-utils -y
 
-# Backup konfigurasi asli
-cp /etc/squid/squid.conf /etc/squid/squid.conf.bak
+    # Buat user dan password
+    echo -e "${YELLOW}Creating user credentials...${NC}"
+    htpasswd -bc /etc/squid/passwd $USERNAME $PASSWORD
 
-# Buat konfigurasi baru
-cat > /etc/squid/squid.conf <<EOF
+    # Backup konfigurasi asli
+    cp /etc/squid/squid.conf /etc/squid/squid.conf.bak
+
+    # Buat konfigurasi baru
+    cat > /etc/squid/squid.conf <<EOF
 # Port dan nama hostname
 http_port 3128
 visible_hostname proxy-server
@@ -70,12 +85,13 @@ refresh_pattern -i (/cgi-bin/|\?) 0 0% 0
 refresh_pattern . 0 20% 4320
 EOF
 
-# Set permissions
-chown -R proxy:proxy /etc/squid/passwd
+    # Set permissions
+    chown -R proxy:proxy /etc/squid/passwd
 
-# Restart Squid
-echo -e "${YELLOW}Restarting Squid service...${NC}"
-systemctl restart squid
+    # Restart Squid
+    echo -e "${YELLOW}Restarting Squid service...${NC}"
+    systemctl restart squid
+fi
 
 # Configure firewall (if UFW is installed)
 if [ -x "$(command -v ufw)" ]; then
