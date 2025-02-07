@@ -902,7 +902,7 @@ fi
 if ! command -v docker &> /dev/null; then
   echo -e "${RED}Docker is not installed, without which the script cannot start. Exiting..${NOCOLOUR}"
   echo -e "To install Docker and its dependencies, please run the following command\n"
-  echo -e "${YELLOW}sudo bash internetIncome.sh --install${NOCOLOUR}\n"
+  echo -e "${YELLOW}sudo bash anu.sh --install${NOCOLOUR}\n"
   exit 1
 fi
 
@@ -921,7 +921,7 @@ if [[ "$1" == "--start" ]]; then
     if [ -f "$file" ]; then
       echo -e "${RED}File $file still exists, there might be containers still running. Please stop them and delete before running the script. Exiting..${NOCOLOUR}"
       echo -e "To stop and delete containers run the following command\n"
-      echo -e "${YELLOW}sudo bash internetIncome.sh --delete${NOCOLOUR}\n"
+      echo -e "${YELLOW}sudo bash anu.sh --delete${NOCOLOUR}\n"
       exit 1
     fi
   done
@@ -930,7 +930,7 @@ if [[ "$1" == "--start" ]]; then
     if [ -d "$folder" ]; then
       echo -e "${RED}Folder $folder still exists, there might be containers still running. Please stop them and delete before running the script. Exiting..${NOCOLOUR}"
       echo -e "To stop and delete containers run the following command\n"
-      echo -e "${YELLOW}sudo bash internetIncome.sh --delete${NOCOLOUR}\n"
+      echo -e "${YELLOW}sudo bash anu.sh --delete${NOCOLOUR}\n"
       exit 1
     fi
   done
@@ -1059,7 +1059,7 @@ if [[ "$1" == "--deleteBackup" ]]; then
     if [ -f "$file" ]; then
       echo -e "${RED}File $file still exists, there might be containers still running. Please stop them and delete before running the script. Exiting..${NOCOLOUR}"
       echo -e "To stop and delete containers run the following command\n"
-      echo -e "${YELLOW}sudo bash internetIncome.sh --delete${NOCOLOUR}\n"
+      echo -e "${YELLOW}sudo bash anu.sh --delete${NOCOLOUR}\n"
       exit 1
     fi
   done
@@ -1069,7 +1069,7 @@ if [[ "$1" == "--deleteBackup" ]]; then
     if [ -d "$folder" ]; then
       echo -e "${RED}Folder $folder still exists, there might be containers still running. Please stop them and delete before running the script. Exiting..${NOCOLOUR}"
       echo -e "To stop and delete containers run the following command\n"
-      echo -e "${YELLOW}sudo bash internetIncome.sh --delete${NOCOLOUR}\n"
+      echo -e "${YELLOW}sudo bash anu.sh --delete${NOCOLOUR}\n"
       exit 1
     fi
   done
