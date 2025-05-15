@@ -30,6 +30,7 @@ containers_file="containers.txt"
 container_names_file="containernames.txt"
 earnapp_file="earnapp.txt"
 earnapp_data_folder="earnappdata"
+proxybase_file="proxybase.txt"
 proxyrack_file="proxyrack.txt"
 networks_file="networks.txt"
 mysterium_file="mysterium.txt"
@@ -51,11 +52,12 @@ restart_file="restart.sh"
 dns_resolver_file="resolv.conf"
 traffmonetizer_data_folder="traffmonetizerdata"
 network3_data_folder="network3-data"
+titan_data_folder="titan-data"
 required_files=($banner_file $properties_file $firefox_profile_zipfile $restart_file $chrome_profile_zipfile)
 files_to_be_removed=($dns_resolver_file $containers_file $container_names_file $networks_file $mysterium_file $ebesucher_file $adnade_file $adnade_containers_file $firefox_containers_file $chrome_containers_file)
 folders_to_be_removed=($adnade_data_folder $firefox_data_folder $firefox_profile_data $earnapp_data_folder $chrome_data_folder $chrome_profile_data)
-back_up_folders=($network3_data_folder $bitping_data_folder $traffmonetizer_data_folder $mysterium_data_folder)
-back_up_files=($earnapp_file $proxyrack_file)
+back_up_folders=($titan_data_folder $network3_data_folder $bitping_data_folder $traffmonetizer_data_folder $mysterium_data_folder)
+back_up_files=($earnapp_file $proxybase_file $proxyrack_file)
 container_pulled=false
 docker_in_docker_detected=false
 
@@ -107,36 +109,6 @@ check_open_ports() {
   done
 
   echo $first_port
-}
-
-add_proxyrack_device() {
-  local api_key=$(grep -E '^PROXYRACK_API=' properties.conf | cut -d '=' -f2 | tr -d "'")
-  local device_name=$(grep -E '^DEVICE_NAME=' properties.conf | cut -d '=' -f2 | tr -d "'")
-
-  if [ -z "$device_name" ]; then
-    echo -e "${RED}Device name tidak ditemukan di properties.conf${NOCOLOUR}"
-    exit 1
-  fi
-
-  # Baca setiap device_id dari proxyrack.txt dan tambahkan satu per satu
-  while IFS= read -r device_id; do
-    if [ -z "$device_id" ]; then
-      continue
-    fi
-
-    response=$(curl -s -w "%{http_code}" -o /dev/null \
-      -X POST https://peer.proxyrack.com/api/device/add \
-      -H "Api-Key: $api_key" \
-      -H "Content-Type: application/json" \
-      -H "Accept: application/json" \
-      -d "{\"device_id\":\"$device_id\",\"device_name\":\"$device_name\"}")
-
-    if [ "$response" -eq 200 ]; then
-      echo -e "${GREEN}Device dengan ID $device_id berhasil ditambahkan ke ProxyRack${NOCOLOUR}"
-    else
-      echo -e "${RED}Gagal menambahkan device dengan ID $device_id ke ProxyRack. Kode status: $response${NOCOLOUR}"
-    fi
-  done < proxyrack.txt
 }
 
 # Start all containers
@@ -493,27 +465,6 @@ start_containers() {
     fi
   fi
 
-  # Starting Grass container
-  if [[ $GRASS_USERNAME && $GRASS_PASSWORD ]]; then
-    echo -e "${GREEN}Starting Grass container..${NOCOLOUR}"
-    if [ "$container_pulled" = false ]; then
-      sudo docker pull --platform=linux/amd64 trangoul/grass-desktop:latest
-    fi
-    if CONTAINER_ID=$(sudo docker run -d --name grass$UNIQUE_ID$i --platform=linux/amd64 --restart=always $NETWORK_TUN $LOGS_PARAM $DNS_VOLUME -e GRASS_USERNAME=$GRASS_USERNAME -e GRASS_PASSWORD=$GRASS_PASSWORD trangoul/grass-desktop:latest); then
-      echo "$CONTAINER_ID" | tee -a $containers_file
-      echo "grass$UNIQUE_ID$i" | tee -a $container_names_file
-      echo "Waiting for 60 seconds for grass container to login.."
-      sleep 60
-    else
-      echo -e "${RED}Failed to start container for Grass. Exiting..${NOCOLOUR}"
-      exit 1
-    fi
-  else
-    if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
-      echo -e "${RED}Grass Username or Password is not configured. Ignoring Grass..${NOCOLOUR}"
-    fi
-  fi
-
   # Starting Repocket container
   if [[ $REPOCKET_EMAIL && $REPOCKET_API ]]; then
     echo -e "${GREEN}Starting Repocket container..${NOCOLOUR}"
@@ -549,6 +500,25 @@ start_containers() {
   else
     if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
       echo -e "${RED}EarnFm Api is not configured. Ignoring EarnFm..${NOCOLOUR}"
+    fi
+  fi
+
+  # Starting PacketSDK container
+  if [[ $PACKET_SDK_APP_KEY ]]; then
+    echo -e "${GREEN}Starting PacketSDK container..${NOCOLOUR}"
+    if [ "$container_pulled" = false ]; then
+      sudo docker pull packetsdk/packetsdk
+    fi
+    if CONTAINER_ID=$(sudo docker run -d --name packetsdk$UNIQUE_ID$i --restart=always $NETWORK_TUN $LOGS_PARAM $DNS_VOLUME packetsdk/packetsdk -appkey=$PACKET_SDK_APP_KEY); then
+      echo "$CONTAINER_ID" | tee -a $containers_file
+      echo "packetsdk$UNIQUE_ID$i" | tee -a $container_names_file
+    else
+      echo -e "${RED}Failed to start container for PacketSDK. Exiting..${NOCOLOUR}"
+      exit 1
+    fi
+  else
+    if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
+      echo -e "${RED}PacketSDK API is not configured. Ignoring PacketSDK..${NOCOLOUR}"
     fi
   fi
 
@@ -605,6 +575,20 @@ start_containers() {
     echo -e "${GREEN}Starting Proxyrack container..${NOCOLOUR}"
     echo -e "${GREEN}Copy the following node uuid and paste in your proxyrack dashboard${NOCOLOUR}"
     echo -e "${GREEN}You will also find the uuids in the file $proxyrack_file in the same folder${NOCOLOUR}"
+    for loop_count in {1..500}; do
+      if [ "$loop_count" -eq 500 ]; then
+        echo -e "${RED}Unique UUID cannot be generated for ProxyRack. Exiting..${NOCOLOUR}"
+        exit 1
+      fi
+      RANDOM_ID=`cat /dev/urandom | LC_ALL=C tr -dc 'A-F0-9' | dd bs=1 count=64 2>/dev/null`
+      if [ -f $proxyrack_file ]; then
+        if ! grep -qF "$RANDOM_ID" "$proxyrack_file"; then
+          break
+        fi
+      else
+        break;
+      fi
+    done
     if [ "$container_pulled" = false ]; then
       sudo docker pull --platform=linux/amd64 proxyrack/pop
     fi
@@ -613,12 +597,12 @@ start_containers() {
         echo $proxyrack_uuid
       else
         echo "Proxyrack UUID does not exist, creating UUID"
-        proxyrack_uuid=`cat /dev/urandom | LC_ALL=C tr -dc 'A-F0-9' | dd bs=1 count=64 2>/dev/null`
+        proxyrack_uuid=$RANDOM_ID
         printf "%s\n" "$proxyrack_uuid" | tee -a $proxyrack_file
       fi
     else
       echo "Proxyrack UUID does not exist, creating UUID"
-      proxyrack_uuid=`cat /dev/urandom | LC_ALL=C tr -dc 'A-F0-9' | dd bs=1 count=64 2>/dev/null`
+      proxyrack_uuid=$RANDOM_ID
       printf "%s\n" "$proxyrack_uuid" | tee -a $proxyrack_file
     fi
 
@@ -632,6 +616,55 @@ start_containers() {
   else
     if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
       echo -e "${RED}Proxyrack is not enabled. Ignoring Proxyrack..${NOCOLOUR}"
+    fi
+  fi
+
+  # Starting ProxyBase container
+  if [ "$PROXYBASE" = true ]; then
+    echo -e "${GREEN}Starting Proxybase container..${NOCOLOUR}"
+    echo -e "${GREEN}Copy the following node uuid and paste in your proxybase dashboard${NOCOLOUR}"
+    echo -e "${GREEN}You will also find the uuids in the file $proxybase_file in the same folder${NOCOLOUR}"
+    for loop_count in {1..500}; do
+      if [ "$loop_count" -eq 500 ]; then
+        echo -e "${RED}Unique UUID cannot be generated for ProxyBase. Exiting..${NOCOLOUR}"
+        exit 1
+      fi
+      RANDOM_ID=`cat /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | dd bs=1 count=32 2>/dev/null`
+      if [ -f $proxybase_file ]; then
+        if ! grep -qF "$RANDOM_ID" "$proxybase_file"; then
+          break
+        fi
+      else
+        break;
+      fi
+    done
+    if [ "$container_pulled" = false ]; then
+      sudo docker pull proxybase/proxybase
+    fi
+    if [ -f $proxybase_file ] && proxybase_uuid=$(sed "${i}q;d" $proxybase_file);then
+      if [[ $proxybase_uuid ]];then
+        echo $proxybase_uuid
+      else
+        echo "Proxybase UUID does not exist, creating UUID"
+        proxybase_uuid=$RANDOM_ID
+        printf "%s\n" "$proxybase_uuid" | tee -a $proxybase_file
+      fi
+    else
+      echo "Proxybase UUID does not exist, creating UUID"
+      proxybase_uuid=$RANDOM_ID
+      printf "%s\n" "$proxybase_uuid" | tee -a $proxybase_file
+    fi
+
+    if CONTAINER_ID=$(sudo docker run -d --name proxybase$UNIQUE_ID$i $NETWORK_TUN $LOGS_PARAM $DNS_VOLUME --restart=always -e device_id=$proxybase_uuid proxybase/proxybase); then
+      echo "$CONTAINER_ID" | tee -a $containers_file
+      echo "proxybase$UNIQUE_ID$i" | tee -a $container_names_file
+    else
+      echo -e "${RED}Failed to start container for Proxybase. Exiting..${NOCOLOUR}"
+      exit 1
+    fi
+  else
+    if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
+      echo -e "${RED}Proxybase is not enabled. Ignoring Proxybase..${NOCOLOUR}"
     fi
   fi
 
@@ -654,22 +687,41 @@ start_containers() {
     fi
   fi
 
-  # Starting Bearshare container
-  if [[ $BEARSHARE_EMAIL && $BEARSHARE_PASSWORD ]]; then
-    echo -e "${GREEN}Starting Bearshare container..${NOCOLOUR}"
+  # Starting CastarSDK container
+  if [[ $CASTAR_SDK_KEY ]]; then
+    echo -e "${GREEN}Starting CastarSDK container..${NOCOLOUR}"
     if [ "$container_pulled" = false ]; then
-      sudo docker pull bearshare/bearshare:latest
+      sudo docker pull ghcr.io/adfly8470/castarsdk/castarsdk@sha256:e61d4c89ed9278921d2620a56f879a21d2ea78abcb1e73e514623048f4a2002d
     fi
-    if CONTAINER_ID=$(sudo docker run -d --name bearshare$UNIQUE_ID$i --restart=always $LOGS_PARAM $DNS_VOLUME $NETWORK_TUN bearshare/bearshare:latest -email=$BEARSHARE_EMAIL -password=$BEARSHARE_PASSWORD); then
+    if CONTAINER_ID=$(sudo docker run -d --name castarsdk$UNIQUE_ID$i --restart=always $NETWORK_TUN $LOGS_PARAM $DNS_VOLUME -e KEY=$CASTAR_SDK_KEY ghcr.io/adfly8470/castarsdk/castarsdk@sha256:e61d4c89ed9278921d2620a56f879a21d2ea78abcb1e73e514623048f4a2002d); then
       echo "$CONTAINER_ID" | tee -a $containers_file
-      echo "bearshare$UNIQUE_ID$i" | tee -a $container_names_file
+      echo "castarsdk$UNIQUE_ID$i" | tee -a $container_names_file
     else
-      echo -e "${RED}Failed to start container for Bearshare. Exiting..${NOCOLOUR}"
+      echo -e "${RED}Failed to start container for CastarSDK. Exiting..${NOCOLOUR}"
       exit 1
     fi
   else
     if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
-      echo -e "${RED}Bearshare Email or Password is not configured. Ignoring Bearshare..${NOCOLOUR}"
+      echo -e "${RED}CastarSDK is not configured. Ignoring CastarSDK..${NOCOLOUR}"
+    fi
+  fi
+
+  # Starting Wipter container
+  if [[ $WIPTER_EMAIL && $WIPTER_PASSWORD ]]; then
+    echo -e "${GREEN}Starting Wipter container..${NOCOLOUR}"
+    if [ "$container_pulled" = false ]; then
+      sudo docker pull --platform=linux/amd64 ghcr.io/adfly8470/wipter/wipter@sha256:aae4e3e33c15b787619fb6b979696c8af7a6cf4b477ee591c6db2868c4f1ff39
+    fi
+    if CONTAINER_ID=$(sudo docker run -d --platform=linux/amd64 --name wipter$UNIQUE_ID$i --restart=always $LOGS_PARAM $DNS_VOLUME $NETWORK_TUN -e WIPTER_EMAIL=$WIPTER_EMAIL -e WIPTER_PASSWORD=$WIPTER_PASSWORD ghcr.io/adfly8470/wipter/wipter@sha256:aae4e3e33c15b787619fb6b979696c8af7a6cf4b477ee591c6db2868c4f1ff39); then
+      echo "$CONTAINER_ID" | tee -a $containers_file
+      echo "wipter$UNIQUE_ID$i" | tee -a $container_names_file
+    else
+      echo -e "${RED}Failed to start container for Wipter. Exiting..${NOCOLOUR}"
+      exit 1
+    fi
+  else
+    if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
+      echo -e "${RED}Wipter Email or Password is not configured. Ignoring Wipter..${NOCOLOUR}"
     fi
   fi
 
@@ -692,22 +744,27 @@ start_containers() {
     fi
   fi
 
-  # Starting Gradient Network container
-  if [[ $GRADIENT_EMAIL && $GRADIENT_PASSWORD ]]; then
-    echo -e "${GREEN}Starting Gradient Network container..${NOCOLOUR}"
+  # Starting Depin Chrome Extensions container
+  if [[ $GRASS_EMAIL && $GRASS_PASSWORD ]] || [[ $GRADIENT_EMAIL && $GRADIENT_PASSWORD ]]; then
     if [ "$container_pulled" = false ]; then
-      sudo docker pull overtrue/gradient-bot
+      sudo docker pull carbon2029/dockweb
     fi
-    if CONTAINER_ID=$(sudo docker run -d --name gradient$UNIQUE_ID$i --restart=always $LOGS_PARAM $DNS_VOLUME $NETWORK_TUN -e APP_USER=$GRADIENT_EMAIL -e APP_PASS=$GRADIENT_PASSWORD overtrue/gradient-bot); then
+    if [[ $GRASS_EMAIL && $GRASS_PASSWORD ]]; then
+      grass_env="-e GRASS_USER=$GRASS_EMAIL -e GRASS_PASS=$GRASS_PASSWORD"
+    fi
+    if [[ $GRADIENT_EMAIL && $GRADIENT_PASSWORD ]]; then
+      gradient_env="-e GRADIENT_EMAIL=$GRADIENT_EMAIL -e GRADIENT_PASS=$GRADIENT_PASSWORD"
+    fi
+    if CONTAINER_ID=$(sudo docker run -d --name depinext$UNIQUE_ID$i --restart=always $LOGS_PARAM $DNS_VOLUME $NETWORK_TUN $grass_env $gradient_env carbon2029/dockweb); then
       echo "$CONTAINER_ID" | tee -a $containers_file
-      echo "gradient$UNIQUE_ID$i" | tee -a $container_names_file
+      echo "depinext$UNIQUE_ID$i" | tee -a $container_names_file
     else
-      echo -e "${RED}Failed to start container for Gradient Network. Exiting..${NOCOLOUR}"
+      echo -e "${RED}Failed to start container for Depin Extensions. Exiting..${NOCOLOUR}"
       exit 1
     fi
   else
     if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
-      echo -e "${RED}Gradient Network Email or Password is not configured. Ignoring Gradient Network..${NOCOLOUR}"
+      echo -e "${RED}Depin Extensions are not configured. Ignoring Depin Extensions..${NOCOLOUR}"
     fi
   fi
 
@@ -836,12 +893,49 @@ start_containers() {
     fi
   fi
 
+  # Starting Titan Network container
+  if [[ $TITAN_HASH ]]; then
+    if [ "$container_pulled" = false ]; then
+      sudo docker pull nezha123/titan-edge
+      mkdir -p $PWD/$titan_data_folder/data$i
+      sudo chmod -R 777 $PWD/$titan_data_folder/data$i
+      titan_volume="-v $PWD/$titan_data_folder/data$i:/root/.titanedge"
+      if CONTAINER_ID=$(sudo  docker run -d --name titan$UNIQUE_ID$i --restart=always $LOGS_PARAM $DNS_VOLUME $NETWORK_TUN $titan_volume nezha123/titan-edge); then
+        echo "$CONTAINER_ID" | tee -a $containers_file
+        echo "titan$UNIQUE_ID$i" | tee -a $container_names_file
+      else
+        echo -e "${RED}Failed to start container for Titan Network. Exiting..${NOCOLOUR}"
+        exit 1
+      fi
+      sleep 5
+      sudo docker run --rm -it $titan_volume nezha123/titan-edge bind --hash=$TITAN_HASH https://api-test1.container1.titannet.io/api/v2/device/binding
+      echo -e "${GREEN}The current script is designed to support only a single device for the Titan Network. Please create a new folder, download the InternetIncome script, and add the appropriate hash for the new device.${NOCOLOUR}"
+    fi
+  else
+    if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
+      echo -e "${RED}Titan Network Hash is not configured. Ignoring Titan Network..${NOCOLOUR}"
+    fi
+  fi
+
   # Starting Earnapp container
   if [ "$EARNAPP" = true ]; then
     echo -e "${GREEN}Starting Earnapp container..${NOCOLOUR}"
     echo -e "${GREEN}Copy the following node url and paste in your earnapp dashboard${NOCOLOUR}"
     echo -e "${GREEN}You will also find the urls in the file $earnapp_file in the same folder${NOCOLOUR}"
-    RANDOM_ID=`cat /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | dd bs=1 count=32 2>/dev/null`
+    for loop_count in {1..500}; do
+      if [ "$loop_count" -eq 500 ]; then
+        echo -e "${RED}Unique UUID cannot be generated for Earnapp. Exiting..${NOCOLOUR}"
+        exit 1
+      fi
+      RANDOM_ID=`cat /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | dd bs=1 count=32 2>/dev/null`
+      if [ -f $earnapp_file ]; then
+        if ! grep -qF "$RANDOM_ID" "$earnapp_file"; then
+          break
+        fi
+      else
+        break;
+      fi
+    done
     date_time=`date "+%D %T"`
     if [ "$container_pulled" = false ]; then
       sudo docker pull fazalfarhan01/earnapp:lite
@@ -902,7 +996,7 @@ fi
 if ! command -v docker &> /dev/null; then
   echo -e "${RED}Docker is not installed, without which the script cannot start. Exiting..${NOCOLOUR}"
   echo -e "To install Docker and its dependencies, please run the following command\n"
-  echo -e "${YELLOW}sudo bash anu.sh --install${NOCOLOUR}\n"
+  echo -e "${YELLOW}sudo bash internetIncome.sh --install${NOCOLOUR}\n"
   exit 1
 fi
 
@@ -921,7 +1015,7 @@ if [[ "$1" == "--start" ]]; then
     if [ -f "$file" ]; then
       echo -e "${RED}File $file still exists, there might be containers still running. Please stop them and delete before running the script. Exiting..${NOCOLOUR}"
       echo -e "To stop and delete containers run the following command\n"
-      echo -e "${YELLOW}sudo bash anu.sh --delete${NOCOLOUR}\n"
+      echo -e "${YELLOW}sudo bash internetIncome.sh --delete${NOCOLOUR}\n"
       exit 1
     fi
   done
@@ -930,7 +1024,7 @@ if [[ "$1" == "--start" ]]; then
     if [ -d "$folder" ]; then
       echo -e "${RED}Folder $folder still exists, there might be containers still running. Please stop them and delete before running the script. Exiting..${NOCOLOUR}"
       echo -e "To stop and delete containers run the following command\n"
-      echo -e "${YELLOW}sudo bash anu.sh --delete${NOCOLOUR}\n"
+      echo -e "${YELLOW}sudo bash internetIncome.sh --delete${NOCOLOUR}\n"
       exit 1
     fi
   done
@@ -989,12 +1083,6 @@ if [[ "$1" == "--start" ]]; then
     start_containers
   fi
   exit 1
-fi
-
-# Tambahkan opsi --addproxyrack di sini
-if [[ "$1" == "--addproxyrack" ]]; then
-  add_proxyrack_device
-  exit 0
 fi
 
 # Delete containers and networks
@@ -1059,7 +1147,7 @@ if [[ "$1" == "--deleteBackup" ]]; then
     if [ -f "$file" ]; then
       echo -e "${RED}File $file still exists, there might be containers still running. Please stop them and delete before running the script. Exiting..${NOCOLOUR}"
       echo -e "To stop and delete containers run the following command\n"
-      echo -e "${YELLOW}sudo bash anu.sh --delete${NOCOLOUR}\n"
+      echo -e "${YELLOW}sudo bash internetIncome.sh --delete${NOCOLOUR}\n"
       exit 1
     fi
   done
@@ -1069,7 +1157,7 @@ if [[ "$1" == "--deleteBackup" ]]; then
     if [ -d "$folder" ]; then
       echo -e "${RED}Folder $folder still exists, there might be containers still running. Please stop them and delete before running the script. Exiting..${NOCOLOUR}"
       echo -e "To stop and delete containers run the following command\n"
-      echo -e "${YELLOW}sudo bash anu.sh --delete${NOCOLOUR}\n"
+      echo -e "${YELLOW}sudo bash internetIncome.sh --delete${NOCOLOUR}\n"
       exit 1
     fi
   done
