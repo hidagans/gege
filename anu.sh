@@ -42,6 +42,7 @@ adnade_containers_file="adnadecontainers.txt"
 firefox_containers_file="firefoxcontainers.txt"
 chrome_containers_file="chromecontainers.txt"
 bitping_data_folder="bitping-data"
+urnetwork_data_folder="urnetwork-data"
 firefox_data_folder="firefoxdata"
 firefox_profile_data="firefoxprofiledata"
 firefox_profile_zipfile="firefoxprofiledata.zip"
@@ -56,7 +57,7 @@ titan_data_folder="titan-data"
 required_files=($banner_file $properties_file $firefox_profile_zipfile $restart_file $chrome_profile_zipfile)
 files_to_be_removed=($dns_resolver_file $containers_file $container_names_file $networks_file $mysterium_file $ebesucher_file $adnade_file $adnade_containers_file $firefox_containers_file $chrome_containers_file)
 folders_to_be_removed=($adnade_data_folder $firefox_data_folder $firefox_profile_data $earnapp_data_folder $chrome_data_folder $chrome_profile_data)
-back_up_folders=($titan_data_folder $network3_data_folder $bitping_data_folder $traffmonetizer_data_folder $mysterium_data_folder)
+back_up_folders=($titan_data_folder $network3_data_folder $bitping_data_folder $urnetwork_data_folder $traffmonetizer_data_folder $mysterium_data_folder)
 back_up_files=($earnapp_file $proxybase_file $proxyrack_file)
 container_pulled=false
 docker_in_docker_detected=false
@@ -691,9 +692,9 @@ start_containers() {
   if [[ $CASTAR_SDK_KEY ]]; then
     echo -e "${GREEN}Starting CastarSDK container..${NOCOLOUR}"
     if [ "$container_pulled" = false ]; then
-      sudo docker pull ghcr.io/adfly8470/castarsdk/castarsdk@sha256:e61d4c89ed9278921d2620a56f879a21d2ea78abcb1e73e514623048f4a2002d
+      sudo docker pull ghcr.io/adfly8470/castarsdk/castarsdk@sha256:881cdbe79f10dbfac65a1de0673587f67059b650f8cd94cd71801cc52a435f53
     fi
-    if CONTAINER_ID=$(sudo docker run -d --name castarsdk$UNIQUE_ID$i --restart=always $NETWORK_TUN $LOGS_PARAM $DNS_VOLUME -e KEY=$CASTAR_SDK_KEY ghcr.io/adfly8470/castarsdk/castarsdk@sha256:e61d4c89ed9278921d2620a56f879a21d2ea78abcb1e73e514623048f4a2002d); then
+    if CONTAINER_ID=$(sudo docker run -d --name castarsdk$UNIQUE_ID$i --restart=always $NETWORK_TUN $LOGS_PARAM $DNS_VOLUME -e KEY=$CASTAR_SDK_KEY ghcr.io/adfly8470/castarsdk/castarsdk@sha256:881cdbe79f10dbfac65a1de0673587f67059b650f8cd94cd71801cc52a435f53); then
       echo "$CONTAINER_ID" | tee -a $containers_file
       echo "castarsdk$UNIQUE_ID$i" | tee -a $container_names_file
     else
@@ -710,9 +711,9 @@ start_containers() {
   if [[ $WIPTER_EMAIL && $WIPTER_PASSWORD ]]; then
     echo -e "${GREEN}Starting Wipter container..${NOCOLOUR}"
     if [ "$container_pulled" = false ]; then
-      sudo docker pull --platform=linux/amd64 ghcr.io/adfly8470/wipter/wipter@sha256:aae4e3e33c15b787619fb6b979696c8af7a6cf4b477ee591c6db2868c4f1ff39
+      sudo docker pull --platform=linux/amd64 ghcr.io/adfly8470/wipter/wipter@sha256:339e6a23d6fd9a787fc35884b81d1dea9d169c40e902789ed73cb6b79621fba2
     fi
-    if CONTAINER_ID=$(sudo docker run -d --platform=linux/amd64 --name wipter$UNIQUE_ID$i --restart=always $LOGS_PARAM $DNS_VOLUME $NETWORK_TUN -e WIPTER_EMAIL=$WIPTER_EMAIL -e WIPTER_PASSWORD=$WIPTER_PASSWORD ghcr.io/adfly8470/wipter/wipter@sha256:aae4e3e33c15b787619fb6b979696c8af7a6cf4b477ee591c6db2868c4f1ff39); then
+    if CONTAINER_ID=$(sudo docker run -d --platform=linux/amd64 --name wipter$UNIQUE_ID$i --restart=always $LOGS_PARAM $DNS_VOLUME $NETWORK_TUN -e WIPTER_EMAIL=$WIPTER_EMAIL -e WIPTER_PASSWORD=$WIPTER_PASSWORD ghcr.io/adfly8470/wipter/wipter@sha256:339e6a23d6fd9a787fc35884b81d1dea9d169c40e902789ed73cb6b79621fba2); then
       echo "$CONTAINER_ID" | tee -a $containers_file
       echo "wipter$UNIQUE_ID$i" | tee -a $container_names_file
     else
@@ -853,22 +854,33 @@ start_containers() {
     fi
   fi
 
-  # Starting Speedshare container
-  if [[ $SPEEDSHARE_TOKEN ]]; then
-    echo -e "${GREEN}Starting Speedshare container..${NOCOLOUR}"
+  # Starting URnetwork container
+  if [[ $UR_AUTH_TOKEN ]]; then
+    echo -e "${GREEN}Starting URnetwork container..${NOCOLOUR}"
     if [ "$container_pulled" = false ]; then
-      sudo docker pull eldavo/speedshare
+      sudo docker pull bringyour/community-provider:latest
+      # Create URnetwork folder
+      mkdir -p $PWD/$urnetwork_data_folder/data/.urnetwork
+      sudo chmod -R 777 $PWD/$urnetwork_data_folder/data/.urnetwork
+      if [ ! -f "$PWD/$urnetwork_data_folder/data/.urnetwork/jwt" ]; then
+        sudo docker run --rm $DNS_VOLUME $NETWORK_TUN -v "$PWD/$urnetwork_data_folder/data/.urnetwork:/root/.urnetwork" --entrypoint /usr/local/sbin/bringyour-provider bringyour/community-provider:latest auth $UR_AUTH_TOKEN
+        sleep 1
+        if [ ! -f "$PWD/$urnetwork_data_folder/data/.urnetwork/jwt" ]; then
+          echo -e "${RED}JWT file could not be generated for URnetwork. Exiting..${NOCOLOUR}"
+          exit 1
+        fi
+      fi
     fi
-    if CONTAINER_ID=$(sudo docker run -d --name speedshare$UNIQUE_ID$i --restart=always $NETWORK_TUN $LOGS_PARAM $DNS_VOLUME -e CODE=$SPEEDSHARE_TOKEN eldavo/speedshare); then
+    if CONTAINER_ID=$(sudo docker run -d --name urnetwork$UNIQUE_ID$i --restart=always $NETWORK_TUN $LOGS_PARAM $DNS_VOLUME -v "$PWD/$urnetwork_data_folder/data/.urnetwork:/root/.urnetwork" bringyour/community-provider:latest provide); then
       echo "$CONTAINER_ID" | tee -a $containers_file
-      echo "speedshare$UNIQUE_ID$i" | tee -a $container_names_file
+      echo "urnetwork$UNIQUE_ID$i" | tee -a $container_names_file
     else
-      echo -e "${RED}Failed to start container for Speedshare. Exiting..${NOCOLOUR}"
+      echo -e "${RED}Failed to start container for URnetwork. Exiting..${NOCOLOUR}"
       exit 1
     fi
   else
     if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
-      echo -e "${RED}Speedshare token is not configured. Ignoring Speedshare..${NOCOLOUR}"
+      echo -e "${RED}URnetwork Node is not enabled. Ignoring URnetwork..${NOCOLOUR}"
     fi
   fi
 
